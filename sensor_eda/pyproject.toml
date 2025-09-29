@@ -8,6 +8,7 @@ dependencies = [
     "matplotlib>=3.10.6",
     "pandas>=2.3.2",
     "pyspark>=4.0.1",
+    "ticc",
     "umap-learn>=0.5.9.post2",
 ]
 
@@ -15,3 +16,6 @@ dependencies = [
 dev = [
     "jupyterlab>=4.4.8",
 ]
+
+[tool.uv.sources]
+ticc = { workspace = true }
