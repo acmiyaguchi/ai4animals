@@ -1,0 +1,3 @@
+[submodule "sensor_eda/TICC"]
+	path = sensor_eda/TICC
+	url = git@github.com:acmiyaguchi/TICC.git
