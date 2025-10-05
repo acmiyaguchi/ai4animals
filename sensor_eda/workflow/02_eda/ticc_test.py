@@ -74,7 +74,7 @@ def fit(
     test.select("behaviour_id", "behaviour").distinct().orderBy("behaviour_id").show()
 
     # now get the accelerometer data
-    pdf = test.select("dateTime", "accX", "accY", "accZ", "behaviour").toPandas()
+    pdf = test.select("dateTime", "accX", "accY", "accZ", "behaviour", "behaviour_id").toPandas()
     pdf.plot(x="dateTime", y=["accX", "accY", "accZ"])
     plt.title(f"Accelerometer Data for Calf 1306 (First {k} Segments)")
     plt.savefig((output_path / "accelerometer_data.png").as_posix())
