@@ -74,7 +74,9 @@ def fit(
     test.select("behaviour_id", "behaviour").distinct().orderBy("behaviour_id").show()
 
     # now get the accelerometer data
-    pdf = test.select("dateTime", "accX", "accY", "accZ", "behaviour", "behaviour_id").toPandas()
+    pdf = test.select(
+        "dateTime", "accX", "accY", "accZ", "behaviour", "behaviour_id"
+    ).toPandas()
     pdf.plot(x="dateTime", y=["accX", "accY", "accZ"])
     plt.title(f"Accelerometer Data for Calf 1306 (First {k} Segments)")
     plt.savefig((output_path / "accelerometer_data.png").as_posix())
@@ -98,11 +100,11 @@ def fit(
     infile = (output_path / "test_ticc.txt").as_posix()
     np.savetxt(infile, X, delimiter=",")
 
-    # 25 hz, so window size of 500 is 20 seconds
+    # 25 hz, so for a window of 100 we have 4 seconds
     # number_of_clusters = 4  # lying, standing, drinking, walking/running
     start_time = time.time()
     ticc = TICC(
-        window_size=500,
+        window_size=100,
         number_of_clusters=4,
         lambda_parameter=11e-2,
         # switching penalty

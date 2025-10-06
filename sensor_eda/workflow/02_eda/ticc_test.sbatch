@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH -Jticc --account=gts-cpradalier7
-#SBATCH --nodes=1 --ntasks=1 --cpus-per-task=4 --mem-per-cpu=4G
+#SBATCH --nodes=1 --ntasks=1 --cpus-per-task=8 --mem-per-cpu=6G
 #SBATCH -t 4:00:00 -q embers -ologs/ticc/%j.log
 #SBATCH --mail-type=END,FAIL --mail-user=acmiyaguchi@gatech.edu
 
