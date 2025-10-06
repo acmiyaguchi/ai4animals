@@ -111,7 +111,7 @@ def fit(
     # number_of_clusters = 4  # lying, standing, drinking, walking/running
     start_time = time.time()
     ticc = TICC(
-        window_size=125,
+        window_size=25,
         number_of_clusters=4,
         lambda_parameter=11e-2,
         # switching penalty
