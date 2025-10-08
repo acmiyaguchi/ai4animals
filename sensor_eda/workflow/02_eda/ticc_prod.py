@@ -119,9 +119,9 @@ def fit(
     ticc = TICC(
         window_size=25,
         number_of_clusters=4,
-        lambda_parameter=11e-3,
+        lambda_parameter=1e-4,
         # switching penalty
-        beta=500,
+        beta=2000,
         maxIters=100,
         threshold=2e-5,
         write_out_file=True,
