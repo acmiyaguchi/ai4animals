@@ -39,7 +39,7 @@ def map_behavior_to_int(label):
 @app.command()
 def fit(
     input_path="~/scratch/ai4animals/sensor_eda/AcTBeCalf.csv",
-    output_path="~/scratch/ai4animals/sensor_eda/ticc/v5/fit",
+    output_path="~/scratch/ai4animals/sensor_eda/ticc/v6/fit",
 ):
     input_path = Path(input_path).expanduser()
     output_path = Path(output_path).expanduser()
@@ -119,9 +119,9 @@ def fit(
     ticc = TICC(
         window_size=25,
         number_of_clusters=4,
-        lambda_parameter=11e-2,
+        lambda_parameter=11e-3,
         # switching penalty
-        beta=200,
+        beta=500,
         maxIters=100,
         threshold=2e-5,
         write_out_file=True,
@@ -144,8 +144,8 @@ def fit(
 
 @app.command()
 def validate(
-    input_path="~/scratch/ai4animals/sensor_eda/ticc/v5/fit",
-    output_path="~/scratch/ai4animals/sensor_eda/ticc/v5/validate",
+    input_path="~/scratch/ai4animals/sensor_eda/ticc/v6/fit",
+    output_path="~/scratch/ai4animals/sensor_eda/ticc/v6/validate",
 ):
     input_path = Path(input_path).expanduser()
     output_path = Path(output_path).expanduser()
