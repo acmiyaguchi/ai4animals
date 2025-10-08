@@ -11,6 +11,8 @@ They equip each calf with a 3D accelerometer sampling at 25Hz attached to a neck
 The X axis is top-bottom, Y is back-forward, and Z is left-right.
 There are 23 annotated behaviors labeled by human observers against video footage.
 
+![alt text](image-7.png)
+
 ![alt text](image.png)
 
 ## Experiment
