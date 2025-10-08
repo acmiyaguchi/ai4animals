@@ -18,7 +18,7 @@ def get_spark():
 
 behaviors = [
     "drinking_milk",
-    "lying",
+    "oral_manipulation",
     "running",
     "standing",
 ]
@@ -39,7 +39,7 @@ def map_behavior_to_int(label):
 @app.command()
 def fit(
     input_path="~/scratch/ai4animals/sensor_eda/AcTBeCalf.csv",
-    output_path="~/scratch/ai4animals/sensor_eda/ticc/v3/fit",
+    output_path="~/scratch/ai4animals/sensor_eda/ticc/v5/fit",
 ):
     input_path = Path(input_path).expanduser()
     output_path = Path(output_path).expanduser()
@@ -47,6 +47,7 @@ def fit(
 
     spark = get_spark()
     df = spark.read.csv(input_path.as_posix(), header=True, inferSchema=True).cache()
+    seed = 42
 
     # we have 4 subsequences, and we want 5 of each to see if we can distinguish between
     # the clusters.
@@ -54,7 +55,7 @@ def fit(
         df.withColumn("behaviour", F.udf(update_behaviour, "string")("behaviour"))
         .where(F.col("behaviour") != "other")
         .withColumn("behaviourId", F.udf(map_behavior_to_int, "int")("behaviour"))
-    )
+    ).cache()
     # for each behavior, let's randomly select k of the segments
     # keep the first few
     seg = (
@@ -66,7 +67,7 @@ def fit(
         )
         .where(F.col("rank") <= 5)
         .drop("rank")
-        .withColumn("sortKey", F.rand())
+        .withColumn("sortKey", F.rand(seed))
         .orderBy("sortKey")
     )
     seg.show(100, truncate=False)
@@ -76,7 +77,7 @@ def fit(
         .withColumn("uid", F.row_number().over(Window.orderBy("sortKey", "dateTime")))
         .drop("sortKey")
         .orderBy("uid")
-    )
+    ).cache()
 
     # distribution of behaviors
     test.select("calfId", "segId", "behaviour").distinct().groupBy(
@@ -86,7 +87,7 @@ def fit(
     test.describe().show()
 
     pdf = test.select(
-        "uid", "dateTime", "accX", "accY", "accZ", "behaviourId"
+        "uid", "dateTime", "accX", "accY", "accZ", "behaviourId", "behaviour"
     ).toPandas()
 
     # now get the accelerometer data
@@ -106,6 +107,11 @@ def fit(
     X = pdf[["accX", "accY", "accZ"]].to_numpy()
     infile = (output_path / "test_ticc.txt").as_posix()
     np.savetxt(infile, X, delimiter=",")
+
+    # also we need to save the original labels for validation later
+    pdf[["uid", "dateTime", "behaviourId", "behaviour"]].to_csv(
+        (output_path / "original_labels.csv").as_posix(), index=False
+    )
 
     # 25 hz, so for a window of 125 we have 5 seconds
     # number_of_clusters = 4  # lying, standing, drinking, walking/running
@@ -138,8 +144,8 @@ def fit(
 
 @app.command()
 def validate(
-    input_path="~/scratch/ai4animals/sensor_eda/ticc/v3/fit",
-    output_path="~/scratch/ai4animals/sensor_eda/ticc/v3/validate",
+    input_path="~/scratch/ai4animals/sensor_eda/ticc/v5/fit",
+    output_path="~/scratch/ai4animals/sensor_eda/ticc/v5/validate",
 ):
     input_path = Path(input_path).expanduser()
     output_path = Path(output_path).expanduser()
