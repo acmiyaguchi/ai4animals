@@ -63,7 +63,9 @@ def fit(
         .distinct()
         .withColumn(
             "rank",
-            F.row_number().over(Window.partitionBy("behaviourId").orderBy(F.rand())),
+            F.row_number().over(
+                Window.partitionBy("behaviourId").orderBy(F.rand(seed))
+            ),
         )
         .where(F.col("rank") <= 5)
         .drop("rank")
@@ -121,7 +123,7 @@ def fit(
         number_of_clusters=4,
         lambda_parameter=1e-4,
         # switching penalty
-        beta=2000,
+        beta=1000,
         maxIters=100,
         threshold=2e-5,
         write_out_file=True,
