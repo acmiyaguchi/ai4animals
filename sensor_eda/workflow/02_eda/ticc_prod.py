@@ -18,9 +18,9 @@ def get_spark():
 
 behaviors = [
     "drinking_milk",
-    "oral_manipulation",
+    "headbutt",
     "running",
-    "standing",
+    "walking",
 ]
 
 
