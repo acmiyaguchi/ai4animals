@@ -3,3 +3,4 @@ logs/
 .scratch
 .venv
 __pycache__/
+*.egg-info
