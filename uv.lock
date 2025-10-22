@@ -337,6 +337,8 @@ dependencies = [
     { name = "polars" },
     { name = "pyarrow" },
     { name = "pyspark" },
+    { name = "scikit-learn" },
+    { name = "umap-learn" },
 ]
 
 [package.metadata]
@@ -347,6 +349,8 @@ requires-dist = [
     { name = "polars", specifier = ">=1.34.0" },
     { name = "pyarrow", specifier = ">=21.0.0" },
     { name = "pyspark", specifier = ">=4.0.1" },
+    { name = "scikit-learn", specifier = ">=1.7.2" },
+    { name = "umap-learn", specifier = ">=0.5.9.post2" },
 ]
 
 [[package]]
