@@ -21,6 +21,10 @@ from stumpy_analysis import (
     PlotTopDiscords,
     PlotTopMotifs,
 )
+from interpretation import (
+    ExportTopMotifs,
+    ExportTopDiscords,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -33,6 +37,10 @@ logger = logging.getLogger("luigi-interface")
 
 class Workflow(luigi.Task):
     def run(self):
+        # this contains the wav files
+        raw_root = Path(
+            "~/scratch/ai4animals/audio_eda/pacific_sounds/raw"
+        ).expanduser()
         input_root = Path(
             "~/scratch/ai4animals/audio_eda/pacific_sounds/processed"
         ).expanduser()
@@ -74,6 +82,23 @@ class Workflow(luigi.Task):
             PlotTopMotifs(
                 input_path=str(input_root),
                 output_path=str(output_root),
+                n_components=16,
+                window_size=20,
+                top_k=3,
+            ),
+            # Audio clipping and export tasks
+            ExportTopMotifs(
+                input_path=str(input_root),
+                output_path=str(output_root),
+                audio_root_path=str(raw_root),
+                n_components=16,
+                window_size=20,
+                top_k=3,
+            ),
+            ExportTopDiscords(
+                input_path=str(input_root),
+                output_path=str(output_root),
+                audio_root_path=str(raw_root),
                 n_components=16,
                 window_size=20,
                 top_k=3,

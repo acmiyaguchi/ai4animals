@@ -7,11 +7,14 @@ requires-python = ">=3.10"
 dependencies = [
     "bioacoustics-model-zoo[birdset]>=0.12.1",
     "contexttimer>=0.3.3",
+    "librosa>=0.11.0",
     "luigi>=3.6.0",
     "polars>=1.34.0",
     "pyarrow>=21.0.0",
+    "pydub>=0.25.1",
     "pyspark>=4.0.1",
     "scikit-learn>=1.7.2",
+    "soundfile>=0.13.1",
     "stumpy>=1.13.0",
     "umap-learn>=0.5.9.post2",
 ]
