@@ -12,6 +12,7 @@ dependencies = [
     "pyarrow>=21.0.0",
     "pyspark>=4.0.1",
     "scikit-learn>=1.7.2",
+    "stumpy>=1.13.0",
     "umap-learn>=0.5.9.post2",
 ]
 

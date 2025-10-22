@@ -1,14 +1,16 @@
-from pyspark.sql import SparkSession, functions as F
-import luigi
 import logging
 from pathlib import Path
-import pandas as pd
-import numpy as np
-import umap
-import matplotlib.pyplot as plt
-from sklearn.decomposition import PCA
-from matplotlib.colors import SymLogNorm
 
+import luigi
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import stumpy
+import umap
+from matplotlib.colors import SymLogNorm
+from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
+from sklearn.decomposition import PCA
 
 logging.basicConfig(
     level=logging.INFO,
@@ -201,6 +203,164 @@ class PlotSVDHeatmap(luigi.Task):
         plt.close()
 
 
+class PlotMatrixProfile(luigi.Task):
+    """
+    Calculates and plots the multi-dimensional matrix profile for the SVD components.
+    This version plots the full N-dimensional profile, which is more standard.
+    """
+
+    input_path: str = luigi.Parameter()
+    output_path: str = luigi.Parameter()
+    n_components: int = luigi.IntParameter(default=16)
+    window_size: int = luigi.IntParameter(default=20)  # 10 second window (20 * 0.5s)
+
+    def output(self):
+        return luigi.LocalTarget(Path(self.output_path) / "matrix_profile.png")
+
+    def run(self):
+        df = pd.read_parquet(f"{self.input_path}/embed.parquet")
+        # choose first file
+        file_to_plot = df["file"].unique()[0]
+        df_filtered = df[df["file"] == file_to_plot].sort_values("start_time")
+
+        if df_filtered.empty:
+            raise ValueError(f"No data found for file: {file_to_plot}")
+
+        logger.info(f"Generating Matrix Profile plot for {file_to_plot}")
+        embeddings = np.stack(df_filtered["embedding"].values)
+
+        pca = PCA(n_components=self.n_components)
+        components = pca.fit_transform(embeddings)  # Shape (n_samples, n_components)
+
+        # Transpose for stumpy: (n_dimensions, n_samples)
+        svd_time_series = components.T
+
+        # Ensure data is C-contiguous (mstump optimization)
+        svd_time_series = np.ascontiguousarray(svd_time_series)
+
+        logger.info(f"Running stumpy.mstump with m={self.window_size}...")
+        m = self.window_size
+        mp, mpi = stumpy.mstump(svd_time_series, m=m)
+
+        # Get the full N-dimensional matrix profile (the last row)
+        full_mp = mp[-1, :]
+
+        # Find the top motif (lowest value in the full-N-dim profile)
+        motif_idx = np.argmin(full_mp)
+        neighbor_idx = mpi[-1, motif_idx]
+
+        logger.info(f"Motif found at index: {motif_idx}, Neighbor at: {neighbor_idx}")
+
+        # Create a 2-panel plot
+        fig, axs = plt.subplots(
+            2, 1, figsize=(15, 10), sharex=True, gridspec_kw={"height_ratios": [1, 1]}
+        )
+
+        # 1. Plot the SVD heatmap on top
+        linthresh = np.abs(components).mean() * 0.1
+        if linthresh == 0:
+            linthresh = 1e-5
+        norm = SymLogNorm(
+            linthresh=linthresh, vmin=np.min(components), vmax=np.max(components)
+        )
+        axs[0].imshow(components.T, aspect="auto", cmap="viridis", norm=norm)
+        axs[0].set_title(
+            f"Top {self.n_components} SVD Components for {Path(file_to_plot).name}"
+        )
+        axs[0].set_ylabel("SVD Component Index")
+
+        # 2. Plot the Full N-Dimensional Matrix Profile on the bottom
+        axs[1].plot(full_mp)
+        axs[1].set_title(f"Full {self.n_components}-Dimensional Matrix Profile")
+        axs[1].set_xlabel("Time (clip index)")
+        axs[1].set_ylabel("Z-Normalized Distance")
+
+        # Add vertical lines for the motif and neighbor to both plots
+        for ax in axs:
+            ax.axvline(motif_idx, color="r", linestyle="--", label="Motif")
+            ax.axvline(neighbor_idx, color="g", linestyle="--", label="Neighbor")
+        axs[0].legend()
+        axs[1].legend()
+
+        plt.tight_layout()
+        Path(self.output().path).parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(self.output().path)
+        plt.close()
+
+
+class PlotMotifDetail(luigi.Task):
+    """
+    Plots each SVD component as a separate line plot, highlighting the
+    location of the top motif and its neighbor.
+    """
+
+    input_path: str = luigi.Parameter()
+    output_path: str = luigi.Parameter()
+    n_components: int = luigi.IntParameter(default=16)
+    window_size: int = luigi.IntParameter(default=20)  # 10 second window (20 * 0.5s)
+
+    def output(self):
+        return luigi.LocalTarget(Path(self.output_path) / "motif_detail.png")
+
+    def run(self):
+        df = pd.read_parquet(f"{self.input_path}/embed.parquet")
+        # choose first file
+        file_to_plot = df["file"].unique()[0]
+        df_filtered = df[df["file"] == file_to_plot].sort_values("start_time")
+
+        if df_filtered.empty:
+            raise ValueError(f"No data found for file: {file_to_plot}")
+
+        logger.info(f"Generating Motif Detail plot for {file_to_plot}")
+        embeddings = np.stack(df_filtered["embedding"].values)
+
+        pca = PCA(n_components=self.n_components)
+        components = pca.fit_transform(embeddings)  # Shape (n_samples, n_components)
+        svd_time_series = components.T  # Shape (n_components, n_samples)
+        svd_time_series_c = np.ascontiguousarray(svd_time_series)
+
+        logger.info(f"Running stumpy.mstump with m={self.window_size}...")
+        m = self.window_size
+        mp, mpi = stumpy.mstump(svd_time_series_c, m=m)
+
+        # Get the full N-dimensional matrix profile (the last row)
+        full_mp = mp[-1, :]
+        motif_idx = np.argmin(full_mp)
+        neighbor_idx = mpi[-1, motif_idx]
+
+        logger.info(f"Plotting motif at {motif_idx} and neighbor at {neighbor_idx}")
+
+        # Create a multi-panel plot, one for each component
+        fig, axs = plt.subplots(
+            self.n_components, 1, figsize=(15, 2 * self.n_components), sharex=True
+        )
+        fig.suptitle(
+            f"Motif Detail: SVD Components for {Path(file_to_plot).name}",
+            fontsize=16,
+            y=1.02,
+        )
+
+        for i in range(self.n_components):
+            axs[i].plot(svd_time_series[i, :])
+            axs[i].set_ylabel(f"SVD {i}")
+
+            # Add shaded regions for motif and neighbor
+            axs[i].axvspan(
+                motif_idx, motif_idx + m, color="r", alpha=0.3, label="Motif"
+            )
+            axs[i].axvspan(
+                neighbor_idx, neighbor_idx + m, color="g", alpha=0.3, label="Neighbor"
+            )
+
+        axs[0].legend(loc="upper right")
+        axs[-1].set_xlabel("Time (clip index)")
+
+        plt.tight_layout()
+        Path(self.output().path).parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(self.output().path)
+        plt.close()
+
+
 class Workflow(luigi.Task):
     def run(self):
         input_root = Path(
@@ -219,6 +379,18 @@ class Workflow(luigi.Task):
                 input_path=str(input_root),
                 output_path=str(output_root),
                 n_components=16,
+            ),
+            PlotMatrixProfile(
+                input_path=str(input_root),
+                output_path=str(output_root),
+                n_components=16,
+                window_size=20,
+            ),
+            PlotMotifDetail(
+                input_path=str(input_root),
+                output_path=str(output_root),
+                n_components=16,
+                window_size=20,
             ),
         ]
 
