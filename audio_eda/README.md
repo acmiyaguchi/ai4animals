@@ -4,6 +4,18 @@ This contains code for doing audio analysis with machine learning techniques for
 
 ## notes
 
+
+### uv
+
+Install the packages to a venv located in temporary directory when you can.
+
+```bash
+export UV_LINK_MODE=copy
+export UV_PROJECT_ENVIRONMENT=${TMPDIR:-/tmp}/ai4animals/.venv
+```
+
+### download
+
 I'll be taking a look at the pacific sounds dataset by MBARI https://registry.opendata.aws/pacific-sound.
 
 
@@ -22,9 +34,7 @@ aws s3 ls --no-sign-request s3://pacific-sound-256khz-2025/09
 
 The soundscapes come in 10 minute intervals.
 
-I'll probably focus on a single soundscape to start with, and extract both embeddings and spectrograms from it.I'd
-
-### download
+I'll probably focus on a single soundscape to start with, and extract both embeddings and spectrograms from it.
 
 I choose 10 random files to download from Sept 2025.
 I assume that the time of day will affect what kinds of things are in the soundscape.
@@ -46,3 +56,13 @@ I assume that the time of day will affect what kinds of things are in the sounds
 ```
 
 These files are pretty big actually.
+
+### embed
+
+On a gpu instance, I run the audio through a birdcall embedding model to get embeddings for 5 second segments at 2hz resolution.
+
+This takes about 30 minutes total when split across 5 tasks on a L40s. 
+
+### eda
+
+Now we do some light exploratory analysis.

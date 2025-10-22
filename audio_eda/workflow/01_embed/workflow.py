@@ -5,6 +5,7 @@ from pathlib import Path
 import bioacoustics_model_zoo as bmz
 import luigi
 from contexttimer import Timer
+from pyspark.sql import SparkSession, functions as F
 
 # Set up basic logging configuration
 logging.basicConfig(
@@ -72,6 +73,47 @@ class EmbedAudio(luigi.Task, OptionsMixin):
         )
 
 
+class AggregateEmbeddings(luigi.Task):
+    input_root = luigi.Parameter()
+    output_root = luigi.Parameter()
+
+    def output(self):
+        return {
+            "embed": luigi.LocalTarget(
+                Path(self.output_root).expanduser() / "embed.parquet"
+            ),
+            "predict": luigi.LocalTarget(
+                Path(self.output_root).expanduser() / "predict.parquet"
+            ),
+        }
+
+    def run(self):
+        spark = SparkSession.builder.config("spark.driver.memory", "8g").getOrCreate()
+        embed = spark.read.parquet(f"{self.input_root}/parts/embed")
+        predict = spark.read.parquet(f"{self.input_root}/parts/predict")
+
+        # these dataframes need to be vectorized
+        stem_udf = F.udf(lambda path: Path(path).stem)
+
+        embed = (
+            embed.select(
+                *embed.columns[:3],
+                F.array(*[F.col(c) for c in embed.columns[3:]]).alias("embedding"),
+            )
+            .withColumn("file", stem_udf(F.col("file")))
+            .orderBy("file", "start_time")
+        )
+
+        # don't attempt to vectorize this, there are nearly 10k columns
+        # and this is bound to be sparse because we're under the ocean
+        predict = predict.withColumn("file", stem_udf(F.col("file"))).orderBy(
+            "file", "start_time"
+        )
+
+        embed.toPandas().to_parquet(self.output()["embed"].path, index=False)
+        predict.toPandas().to_parquet(self.output()["predict"].path, index=False)
+
+
 class Workflow(luigi.Task):
     def run(self):
         input_root = Path(
@@ -92,6 +134,11 @@ class Workflow(luigi.Task):
             )
             for p in wav_files
         ]
+
+        yield AggregateEmbeddings(
+            input_root=str(output_root),
+            output_root=str(output_root),
+        )
 
 
 def main():

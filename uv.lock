@@ -336,6 +336,7 @@ dependencies = [
     { name = "luigi" },
     { name = "polars" },
     { name = "pyarrow" },
+    { name = "pyspark" },
 ]
 
 [package.metadata]
@@ -345,6 +346,7 @@ requires-dist = [
     { name = "luigi", specifier = ">=3.6.0" },
     { name = "polars", specifier = ">=1.34.0" },
     { name = "pyarrow", specifier = ">=21.0.0" },
+    { name = "pyspark", specifier = ">=4.0.1" },
 ]
 
 [[package]]

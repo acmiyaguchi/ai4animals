@@ -9,7 +9,8 @@ dependencies = [
     "contexttimer>=0.3.3",
     "luigi>=3.6.0",
     "polars>=1.34.0",
-    "pyarrow>=21.0.0"
+    "pyarrow>=21.0.0",
+    "pyspark>=4.0.1",
 ]
 
 [tool.uv.sources]
