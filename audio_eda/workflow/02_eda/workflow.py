@@ -361,6 +361,237 @@ class PlotMotifDetail(luigi.Task):
         plt.close()
 
 
+class PlotNaturalDimensionality(luigi.Task):
+    """
+    Plots the "Elbow Plot" (Fig. 6 in the mSTAMP paper) to help
+    find the "natural" dimensionality of the motifs.
+    """
+
+    input_path: str = luigi.Parameter()
+    output_path: str = luigi.Parameter()
+    n_components: int = luigi.IntParameter(default=16)
+    window_size: int = luigi.IntParameter(default=20)
+
+    def output(self):
+        return luigi.LocalTarget(
+            Path(self.output_path) / "natural_dimensionality_plot.png"
+        )
+
+    def _get_data(self):
+        df = pd.read_parquet(f"{self.input_path}/embed.parquet")
+        file_to_plot = df["file"].unique()[0]
+        df_filtered = df[df["file"] == file_to_plot].sort_values("start_time")
+        embeddings = np.stack(df_filtered["embedding"].values)
+
+        pca = PCA(n_components=self.n_components)
+        components = pca.fit_transform(embeddings)
+        svd_time_series = np.ascontiguousarray(components.T)
+        return svd_time_series, Path(file_to_plot).name
+
+    def run(self):
+        svd_time_series, file_name = self._get_data()
+        m = self.window_size
+
+        logger.info("Running stumpy.mstump for elbow plot...")
+        mp, mpi = stumpy.mstump(svd_time_series, m=m)
+
+        # For each k, find the minimum value of its k-dimensional profile
+        min_distances = [mp[k, :].min() for k in range(self.n_components)]
+
+        plt.figure(figsize=(10, 6))
+        plt.plot(
+            range(1, self.n_components + 1), min_distances, marker="o", linestyle="--"
+        )
+        plt.title(f"Natural Dimensionality Elbow Plot for {file_name}")
+        plt.xlabel("Number of Dimensions (k)")
+        plt.ylabel("Minimum Matrix Profile Value (Distance)")
+        plt.xticks(range(1, self.n_components + 1))
+        plt.grid(True)
+
+        Path(self.output().path).parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(self.output().path)
+        plt.close()
+
+
+class PlotTopDiscords(luigi.Task):
+    """Finds and plots the top K discords (anomalies)."""
+
+    input_path: str = luigi.Parameter()
+    output_path: str = luigi.Parameter()
+    n_components: int = luigi.IntParameter(default=16)
+    window_size: int = luigi.IntParameter(default=20)
+    top_k: int = luigi.IntParameter(default=3)
+
+    def output(self):
+        return luigi.LocalTarget(Path(self.output_path) / "top_discords.png")
+
+    def _get_data(self):
+        df = pd.read_parquet(f"{self.input_path}/embed.parquet")
+        file_to_plot = df["file"].unique()[0]
+        df_filtered = df[df["file"] == file_to_plot].sort_values("start_time")
+        embeddings = np.stack(df_filtered["embedding"].values)
+
+        pca = PCA(n_components=self.n_components)
+        components = pca.fit_transform(embeddings)
+        return components, Path(file_to_plot).name
+
+    def run(self):
+        components, file_name = self._get_data()
+        svd_time_series = np.ascontiguousarray(components.T)
+        m = self.window_size
+
+        logger.info("Running stumpy.mstump for discords...")
+        mp, mpi = stumpy.mstump(svd_time_series, m=m)
+        full_mp = mp[-1, :]
+
+        # Find top k discords (highest values)
+        # We need to sort and then pick top_k, ignoring neighbors
+        exclusion_zone = m // 2
+        sorted_indices = np.argsort(full_mp)[::-1]  # Sort high to low
+        discord_indices = []
+        for idx in sorted_indices:
+            is_neighbor = False
+            for d_idx in discord_indices:
+                if abs(idx - d_idx) < exclusion_zone:
+                    is_neighbor = True
+                    break
+            if not is_neighbor:
+                discord_indices.append(idx)
+            if len(discord_indices) == self.top_k:
+                break
+
+        logger.info(f"Top {self.top_k} discords found at: {discord_indices}")
+
+        plt.figure(figsize=(15, 5))
+        linthresh = np.abs(components).mean() * 0.1
+        if linthresh == 0:
+            linthresh = 1e-5
+        norm = SymLogNorm(
+            linthresh=linthresh, vmin=np.min(components), vmax=np.max(components)
+        )
+        plt.imshow(components.T, aspect="auto", cmap="viridis", norm=norm)
+
+        colors = plt.cm.autumn(np.linspace(0, 1, self.top_k))
+        for i, idx in enumerate(discord_indices):
+            plt.axvline(
+                idx,
+                color=colors[i],
+                linestyle="--",
+                label=f"Discord {i + 1} (idx {idx})",
+            )
+
+        plt.title(f"Top {self.top_k} Discords for {file_name}")
+        plt.xlabel("Time (clip index)")
+        plt.ylabel("SVD Component Index")
+        plt.legend()
+        Path(self.output().path).parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(self.output().path)
+        plt.close()
+
+
+class PlotTopMotifs(luigi.Task):
+    """Finds and plots the top K motifs (repeating patterns)."""
+
+    input_path: str = luigi.Parameter()
+    output_path: str = luigi.Parameter()
+    n_components: int = luigi.IntParameter(default=16)
+    window_size: int = luigi.IntParameter(default=20)
+    top_k: int = luigi.IntParameter(default=3)
+
+    def output(self):
+        return luigi.LocalTarget(Path(self.output_path) / "top_motifs.png")
+
+    def _get_data(self):
+        df = pd.read_parquet(f"{self.input_path}/embed.parquet")
+        file_to_plot = df["file"].unique()[0]
+        df_filtered = df[df["file"] == file_to_plot].sort_values("start_time")
+        embeddings = np.stack(df_filtered["embedding"].values)
+
+        pca = PCA(n_components=self.n_components)
+        components = pca.fit_transform(embeddings)
+        return components, Path(file_to_plot).name
+
+    def run(self):
+        components, file_name = self._get_data()
+        svd_time_series = np.ascontiguousarray(components.T)
+        m = self.window_size
+
+        logger.info(f"Running stumpy.mstump for motifs...")
+        mp, mpi = stumpy.mstump(svd_time_series, m=m)
+        full_mp = mp[-1, :]
+        full_mpi = mpi[-1, :]
+
+        # Manually find top k motifs (lowest values), respecting exclusion zones
+        exclusion_zone = m // 2
+        sorted_indices = np.argsort(full_mp)  # Sort low to high
+
+        motif_groups = []  # Will store tuples of (distance, [idx, neighbor_idx])
+
+        # Keep track of indices that have been used
+        used_indices = np.zeros_like(full_mp, dtype=bool)
+
+        for idx in sorted_indices:
+            if used_indices[idx]:
+                continue
+
+            neighbor_idx = full_mpi[idx]
+
+            # Check if neighbor is also unused
+            if used_indices[neighbor_idx]:
+                continue
+
+            # Add this motif pair (and its neighbors) to the used list
+            motif_dist = full_mp[idx]
+            motif_groups.append((motif_dist, [idx, neighbor_idx]))
+
+            # Apply exclusion zone around both motif and neighbor
+            used_indices[
+                max(0, idx - exclusion_zone) : min(
+                    len(full_mp), idx + exclusion_zone + 1
+                )
+            ] = True
+            used_indices[
+                max(0, neighbor_idx - exclusion_zone) : min(
+                    len(full_mp), neighbor_idx + exclusion_zone + 1
+                )
+            ] = True
+
+            if len(motif_groups) == self.top_k:
+                break
+
+        logger.info(f"Top {len(motif_groups)} motif groups found.")
+
+        plt.figure(figsize=(15, 5))
+        linthresh = np.abs(components).mean() * 0.1
+        if linthresh == 0:
+            linthresh = 1e-5
+        norm = SymLogNorm(
+            linthresh=linthresh, vmin=np.min(components), vmax=np.max(components)
+        )
+        plt.imshow(components.T, aspect="auto", cmap="viridis", norm=norm)
+
+        colors = plt.cm.cool(np.linspace(0, 1, len(motif_groups)))
+        # Loop through the found motif groups
+        for i, (distance, indices) in enumerate(motif_groups):
+            label = f"Motif {i + 1} (dist: {distance:.2f})"
+            for j, idx in enumerate(indices):
+                plt.axvspan(
+                    idx,
+                    idx + m,
+                    color=colors[i],
+                    alpha=0.4,
+                    label=label if j == 0 else None,  # Only label first one
+                )
+    
+        plt.title(f"Top {len(motif_groups)} Motifs for {file_name}")
+        plt.xlabel("Time (clip index)")
+        plt.ylabel("SVD Component Index")
+        plt.legend()
+        Path(self.output().path).parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(self.output().path)
+        plt.close()
+
+
 class Workflow(luigi.Task):
     def run(self):
         input_root = Path(
@@ -391,6 +622,26 @@ class Workflow(luigi.Task):
                 output_path=str(output_root),
                 n_components=16,
                 window_size=20,
+            ),
+            PlotNaturalDimensionality(
+                input_path=str(input_root),
+                output_path=str(output_root),
+                n_components=16,
+                window_size=20,
+            ),
+            PlotTopDiscords(
+                input_path=str(input_root),
+                output_path=str(output_root),
+                n_components=16,
+                window_size=20,
+                top_k=3,
+            ),
+            PlotTopMotifs(
+                input_path=str(input_root),
+                output_path=str(output_root),
+                n_components=16,
+                window_size=20,
+                top_k=3,
             ),
         ]
 
