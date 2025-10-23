@@ -104,6 +104,7 @@ class ExportTopMotifs(luigi.Task):
     # New parameters for this task
     audio_root_path: str = luigi.Parameter()
     clip_hop_seconds: float = luigi.FloatParameter(default=0.5)
+    suffix: str = luigi.Parameter(default="wav")
 
     def requires(self):
         # We depend on the CSV file from PlotTopMotifs
@@ -132,7 +133,7 @@ class ExportTopMotifs(luigi.Task):
                 Path(self.input_path), file_name, self.n_components
             )
             audio_file_path = (Path(self.audio_root_path) / file_name).with_suffix(
-                ".wav"
+                f".{self.suffix}"
             )
 
             # Log the sample rate
@@ -264,6 +265,7 @@ class ExportTopDiscords(luigi.Task):
     # New parameters for this task
     audio_root_path: str = luigi.Parameter()
     clip_hop_seconds: float = luigi.FloatParameter(default=0.5)
+    suffix: str = luigi.Parameter(default="wav")
 
     def requires(self):
         # We depend on the CSV file from PlotTopDiscords
@@ -292,7 +294,7 @@ class ExportTopDiscords(luigi.Task):
                 Path(self.input_path), file_name, self.n_components
             )
             audio_file_path = (Path(self.audio_root_path) / file_name).with_suffix(
-                ".wav"
+                f".{self.suffix}"
             )
 
             # Log the sample rate
