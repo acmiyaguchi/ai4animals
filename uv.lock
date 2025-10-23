@@ -329,7 +329,7 @@ wheels = [
 [[package]]
 name = "audio-eda"
 version = "0.1.0"
-source = { virtual = "audio_eda" }
+source = { editable = "audio_eda" }
 dependencies = [
     { name = "bioacoustics-model-zoo", extra = ["birdset"] },
     { name = "contexttimer" },

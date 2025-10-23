@@ -1,5 +1,5 @@
 [project]
-name = "audio-eda"
+name = "audio_eda"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
@@ -18,6 +18,12 @@ dependencies = [
     "stumpy>=1.13.0",
     "umap-learn>=0.5.9.post2",
 ]
+
+[tool.setuptools]
+packages = ["audio_eda"]
+
+[tool.uv]
+package = true
 
 [tool.uv.sources]
 bioacoustics-model-zoo = { git = "https://github.com/kitzeslab/bioacoustics-model-zoo.git" }

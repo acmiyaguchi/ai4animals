@@ -5,18 +5,15 @@ import librosa
 import librosa.display
 import soundfile as sf
 import matplotlib.pyplot as plt
-from pydub import AudioSegment  # Import pydub
+from pydub import AudioSegment
 from matplotlib.colors import SymLogNorm
 from pathlib import Path
 import logging
-import io
-import warnings  # Import the warnings module
 
 # Import the tasks we depend on
-from stumpy_analysis import PlotTopMotifs, PlotTopDiscords
-from representation import PlotSVDHeatmap  # We borrow its SVD logic
+from .stumpy_analysis import PlotTopMotifs, PlotTopDiscords
 
-logger = logging.getLogger("luigi-interface")
+logger = logging.getLogger(__name__)
 
 # --- NEW: Define a target sample rate for human listening ---
 TARGET_SR = 44100  # Standard audio CD sample rate

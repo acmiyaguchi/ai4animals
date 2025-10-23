@@ -9,19 +9,19 @@ from pathlib import Path
 
 import luigi
 
-from representation import (
+from audio_eda.representation import (
     SchemaAndCountsTask,
     PlotUMAPScatter,
     PlotScreePlot,
     PlotSVDHeatmap,
 )
-from stumpy_analysis import (
+from audio_eda.stumpy_analysis import (
     PlotMatrixProfile,
     PlotMotifDetail,
     PlotTopDiscords,
     PlotTopMotifs,
 )
-from interpretation import (
+from audio_eda.interpretation import (
     ExportTopMotifs,
     ExportTopDiscords,
 )
