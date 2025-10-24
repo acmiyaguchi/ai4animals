@@ -41,6 +41,9 @@ class Workflow(luigi.Task):
         output_root = Path(__file__).parent / "results"
         output_root.mkdir(parents=True, exist_ok=True)
 
+        window_size = 5
+        n_components = 16
+
         yield [
             SchemaAndCountsTask(
                 input_path=str(input_root), output_path=str(output_root)
@@ -50,34 +53,34 @@ class Workflow(luigi.Task):
             PlotSVDHeatmap(
                 input_path=str(input_root),
                 output_path=str(output_root),
-                n_components=16,
+                n_components=n_components,
             ),
             PlotMatrixProfile(
                 input_path=str(input_root),
                 output_path=str(output_root),
-                n_components=16,
-                window_size=20,
+                n_components=n_components,
+                window_size=window_size,
             ),
             PlotMotifDetail(
                 input_path=str(input_root),
                 output_path=str(output_root),
-                n_components=16,
-                window_size=20,
+                n_components=n_components,
+                window_size=window_size,
             ),
             # Note: PlotNaturalDimensionality is required by other tasks,
             # so it will run automatically.
             PlotTopDiscords(
                 input_path=str(input_root),
                 output_path=str(output_root),
-                n_components=16,
-                window_size=20,
+                n_components=n_components,
+                window_size=window_size,
                 top_k=3,
             ),
             PlotTopMotifs(
                 input_path=str(input_root),
                 output_path=str(output_root),
-                n_components=16,
-                window_size=20,
+                n_components=n_components,
+                window_size=window_size,
                 top_k=3,
             ),
             # Audio clipping and export tasks
@@ -85,8 +88,8 @@ class Workflow(luigi.Task):
                 input_path=str(input_root),
                 output_path=str(output_root),
                 audio_root_path=str(raw_root),
-                n_components=16,
-                window_size=20,
+                n_components=n_components,
+                window_size=window_size,
                 top_k=3,
                 suffix="ogg",
             ),
@@ -94,8 +97,8 @@ class Workflow(luigi.Task):
                 input_path=str(input_root),
                 output_path=str(output_root),
                 audio_root_path=str(raw_root),
-                n_components=16,
-                window_size=20,
+                n_components=n_components,
+                window_size=window_size,
                 top_k=3,
                 suffix="ogg",
             ),
