@@ -11,4 +11,5 @@ members = [
     "sensor_eda",
     "sensor_eda/TICC",
     "audio_eda",
+    "visual_eda",
 ]
