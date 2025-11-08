@@ -5375,9 +5375,15 @@ dependencies = [
     { name = "lightning" },
     { name = "matplotlib" },
     { name = "pandas" },
+    { name = "pyarrow" },
     { name = "pyspark" },
     { name = "torch" },
     { name = "umap-learn" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "jupyterlab" },
 ]
 
 [package.metadata]
@@ -5385,10 +5391,14 @@ requires-dist = [
     { name = "lightning", specifier = ">=2.5.5" },
     { name = "matplotlib", specifier = ">=3.10.6" },
     { name = "pandas", specifier = ">=2.3.2" },
+    { name = "pyarrow", specifier = ">=21.0.0" },
     { name = "pyspark", specifier = ">=4.0.1" },
     { name = "torch", specifier = ">=2.9.0" },
     { name = "umap-learn", specifier = ">=0.5.9.post2" },
 ]
+
+[package.metadata.requires-dev]
+dev = [{ name = "jupyterlab", specifier = ">=4.4.8" }]
 
 [[package]]
 name = "wandb"
