@@ -70,7 +70,7 @@ class LightGlueMatcher:
     def __init__(self, features_name, threshold=0.5, device="cuda"):
         collector = CollectCounts(thresholds=[threshold])
         self.matcher = MatchLightGlue(
-            features=features_name, collector=collector, device=device
+            features=features_name, collector=collector, device=device, batch_size=256
         )
         self.threshold = threshold
 
@@ -177,7 +177,9 @@ class ExtractFeatures(BaseTask):
             model = timm.create_model(
                 "hf-hub:BVRA/MegaDescriptor-T-224", num_classes=0, pretrained=True
             )
-            extractor = DeepFeatures(model, device=device, num_workers=4)
+            extractor = DeepFeatures(
+                model, device=device, num_workers=32, batch_size=512
+            )
             transform = T.Compose(
                 [
                     T.Resize([224, 224]),
@@ -399,7 +401,9 @@ class EvaluateWildFusion(BaseTask):
             model = timm.create_model(
                 "hf-hub:BVRA/MegaDescriptor-T-224", num_classes=0, pretrained=True
             )
-            extractor = DeepFeatures(model, device=device, num_workers=4)
+            extractor = DeepFeatures(
+                model, device=device, num_workers=32, batch_size=512
+            )
             transform = T.Compose(
                 [
                     T.Resize([224, 224]),
@@ -409,7 +413,7 @@ class EvaluateWildFusion(BaseTask):
             )
             matcher = CosineSimilarity()
         elif extractor_name == "superpoint-lightglue":
-            extractor = SuperPointExtractor(device=device)
+            extractor = SuperPointExtractor(device=device, num_workers=32)
             transform = T.Compose([T.Resize([224, 224]), T.ToTensor()])
             matcher = LightGlueMatcher(features_name="superpoint", device=device)
         else:
@@ -662,6 +666,21 @@ def fusion(
 ):
     """Run WildFusion multi-pipeline system."""
     calibrated_extractors = [x.strip() for x in calibrated.split(",")]
+
+    # Print configuration
+    typer.secho("\n" + "=" * 80, fg=typer.colors.CYAN)
+    typer.secho("WildFusion Pipeline Configuration", fg=typer.colors.CYAN, bold=True)
+    typer.secho("=" * 80 + "\n", fg=typer.colors.CYAN)
+    typer.echo(f"Data Root:            {data_root}")
+    typer.echo(f"Priority Extractor:   {priority}")
+    typer.echo(f"Calibrated Extractors: {', '.join(calibrated_extractors)}")
+    typer.echo(f"Calibration Method:   {calibration}")
+    typer.echo(f"k-NN:                 {k}")
+    typer.echo(f"Shortlisting Budget:  {budget}")
+    typer.echo(f"Train Split:          {train_split}")
+    typer.echo(f"Calibration Split:    {cal_split}")
+    typer.echo(f"Test Split:           {1.0 - train_split - cal_split}")
+    typer.secho("\n" + "=" * 80 + "\n", fg=typer.colors.CYAN)
 
     luigi.build(
         [
