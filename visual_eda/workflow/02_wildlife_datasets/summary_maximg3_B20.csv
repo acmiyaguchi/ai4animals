@@ -1,0 +1,16 @@
+pipeline,model,sim,calibrated,calibration,k,B,accuracy,ece,file
+knn,megadescriptor-t,cosine,-,isotonic,1,,21.11%,1.96%,ext-megadescriptor-t_sim-cosine_cal-isotonic_k-1_maxid30_maximg3.json
+knn,clip-vit-b-32,cosine,-,isotonic,3,,20.00%,1.67%,ext-clip-vit-b-32_sim-cosine_cal-isotonic_k-3_maxid30_maximg3.json
+knn,megadescriptor-t,cosine,-,isotonic,3,,20.00%,1.96%,ext-megadescriptor-t_sim-cosine_cal-isotonic_k-3_maxid30_maximg3.json
+knn,clip-vit-b-32,cosine,-,isotonic,1,,20.00%,1.67%,ext-clip-vit-b-32_sim-cosine_cal-isotonic_k-1_maxid30_maximg3.json
+wildfusion,megadescriptor-t,-,disk-lightglue,isotonic,1,20.0,17.78%,1.15%,p-mega_c-disk-lightglue_cal-isotonic_k-1_B-20.json
+knn,clip-vit-b-32,cosine,-,isotonic,5,,16.67%,1.67%,ext-clip-vit-b-32_sim-cosine_cal-isotonic_k-5_maxid30_maximg3.json
+knn,megadescriptor-t,cosine,-,isotonic,5,,14.44%,1.96%,ext-megadescriptor-t_sim-cosine_cal-isotonic_k-5_maxid30_maximg3.json
+knn,megadescriptor-t,cosine,-,isotonic,10,,13.33%,1.96%,ext-megadescriptor-t_sim-cosine_cal-isotonic_k-10_maxid30_maximg3.json
+wildfusion,megadescriptor-t,-,superpoint-lightglue,isotonic,1,20.0,13.33%,1.53%,p-mega_c-sp-lg_cal-isotonic_k-1_B-20.json
+knn,clip-vit-b-32,cosine,-,isotonic,10,,12.22%,1.67%,ext-clip-vit-b-32_sim-cosine_cal-isotonic_k-10_maxid30_maximg3.json
+knn,dinov2-vits14,cosine,-,isotonic,3,,12.22%,1.91%,ext-dinov2-vits14_sim-cosine_cal-isotonic_k-3_maxid30_maximg3.json
+wildfusion,megadescriptor-t,-,sift-lightglue,isotonic,1,20.0,12.22%,1.49%,p-mega_c-sift-lightglue_cal-isotonic_k-1_B-20.json
+knn,dinov2-vits14,cosine,-,isotonic,5,,10.00%,1.91%,ext-dinov2-vits14_sim-cosine_cal-isotonic_k-5_maxid30_maximg3.json
+knn,dinov2-vits14,cosine,-,isotonic,1,,10.00%,1.91%,ext-dinov2-vits14_sim-cosine_cal-isotonic_k-1_maxid30_maximg3.json
+knn,dinov2-vits14,cosine,-,isotonic,10,,7.78%,1.91%,ext-dinov2-vits14_sim-cosine_cal-isotonic_k-10_maxid30_maximg3.json

@@ -5,6 +5,7 @@ from typing import List, Optional
 
 import luigi
 import numpy as np
+import pandas as pd
 import timm
 import torch
 import torchvision.transforms as T
@@ -187,8 +188,40 @@ class ExtractFeatures(BaseTask):
                     T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
                 ]
             )
+        elif self.extractor_name == "dinov2-vits14":
+            model = timm.create_model(
+                "hf-hub:timm/vit_small_patch14_dinov2.lvd142m",
+                num_classes=0,
+                pretrained=True,
+            )
+            extractor = DeepFeatures(
+                model, device=device, num_workers=32, batch_size=512
+            )
+            transform = T.Compose(
+                [
+                    T.Resize([518, 518]),
+                    T.ToTensor(),
+                    T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+                ]
+            )
+        elif self.extractor_name == "clip-vit-b-32":
+            model = timm.create_model(
+                "hf-hub:timm/vit_base_patch32_clip_224.openai",
+                num_classes=0,
+                pretrained=True,
+            )
+            extractor = DeepFeatures(
+                model, device=device, num_workers=32, batch_size=512
+            )
+            transform = T.Compose(
+                [
+                    T.Resize([224, 224]),
+                    T.ToTensor(),
+                    T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+                ]
+            )
         elif self.extractor_name == "superpoint":
-            extractor = SuperPointExtractor(device=device)
+            extractor = SuperPointExtractor(device=device, num_workers=32)
             transform = T.Compose([T.Resize([224, 224]), T.ToTensor()])
         else:
             raise ValueError(f"Unknown extractor_name: {self.extractor_name}")
@@ -487,6 +520,14 @@ class EvaluateWildFusion(BaseTask):
             extractor = SiftExtractor()
             transform = T.Compose([T.Resize([224, 224]), T.ToTensor()])
             matcher = LightGlueMatcher(features_name="sift", device=device)
+        elif extractor_name == "aliked-lightglue":
+            extractor = AlikedExtractor(device=device, num_workers=32)
+            transform = T.Compose([T.Resize([224, 224]), T.ToTensor()])
+            matcher = LightGlueMatcher(features_name="aliked", device=device)
+        elif extractor_name == "disk-lightglue":
+            extractor = DiskExtractor(device=device, num_workers=32)
+            transform = T.Compose([T.Resize([224, 224]), T.ToTensor()])
+            matcher = LightGlueMatcher(features_name="disk", device=device)
         else:
             raise ValueError(f"Unknown extractor_name: {extractor_name}")
 
@@ -876,28 +917,43 @@ def search_knn(
         help="Root directory for data storage",
     ),
     extractors: str = typer.Option(
-        "megadescriptor-t", "--extractors", "-e", help="Comma-separated extractors"
+        "megadescriptor-t,dinov2-vits14,clip-vit-b-32",
+        "--extractors",
+        "-e",
+        help="Comma-separated extractors",
     ),
     similarities: str = typer.Option(
         "cosine", "--similarities", "-s", help="Comma-separated similarities"
     ),
     calibrations: str = typer.Option(
-        "none,isotonic,logistic",
+        "isotonic",
         "--calibrations",
         "-c",
         help="Comma-separated calibrations",
     ),
     k_values: str = typer.Option(
-        "1,3,5", "--k-values", "-k", help="Comma-separated k values"
+        "1,3,5,10", "--k-values", "-k", help="Comma-separated k values"
     ),
     train_split: float = typer.Option(0.6, "--train", help="Train split ratio"),
     cal_split: float = typer.Option(0.2, "--cal", help="Calibration split ratio"),
+    max_identities: int = typer.Option(
+        30, "--max-identities", help="Limit to N most common identities"
+    ),
+    max_images: int = typer.Option(
+        3, "--max-images", help="Limit to N images per identity"
+    ),
 ):
-    """Run hyperparameter search for k-NN pipeline."""
+    """Run hyperparameter search for k-NN pipeline with fixed dataset limits."""
     extractors_list = [x.strip() for x in extractors.split(",")]
     similarities_list = [x.strip() for x in similarities.split(",")]
     calibrations_list = [x.strip() for x in calibrations.split(",")]
     k_list = [int(x.strip()) for x in k_values.split(",")]
+
+    typer.secho(
+        f"\nk-NN Hyperparameter Search (Fixed: {max_identities} identities × {max_images} images, calibration=isotonic)",
+        fg=typer.colors.CYAN,
+        bold=True,
+    )
 
     tasks = []
     for extractor in extractors_list:
@@ -913,6 +969,8 @@ def search_knn(
                             k=k,
                             train_split=train_split,
                             cal_split=cal_split,
+                            max_identities=max_identities,
+                            max_images_per_identity=max_images,
                         )
                     )
 
@@ -935,42 +993,47 @@ def search_fusion(
         help="Comma-separated priority extractors",
     ),
     calibrated: str = typer.Option(
-        "sift-lightglue",
+        "aliked-lightglue,superpoint-lightglue,sift-lightglue,disk-lightglue",
         "--calibrated",
-        help="Calibrated extractors (use ; to separate sets)",
+        help="Comma-separated calibrated extractors",
     ),
     calibrations: str = typer.Option(
-        "isotonic,logistic",
+        "isotonic",
         "--calibrations",
         "-c",
         help="Comma-separated calibrations",
     ),
     k_values: str = typer.Option(
-        "1,3,5", "--k-values", "-k", help="Comma-separated k values"
+        "1", "--k-values", "-k", help="Comma-separated k values"
     ),
     budgets: str = typer.Option(
-        "50,100,200", "--budgets", "-b", help="Comma-separated budget values"
+        "20", "--budgets", "-b", help="Comma-separated budget values"
     ),
     train_split: float = typer.Option(0.6, "--train", help="Train split ratio"),
     cal_split: float = typer.Option(0.2, "--cal", help="Calibration split ratio"),
+    max_identities: int = typer.Option(
+        30, "--max-identities", help="Limit to N most common identities"
+    ),
+    max_images: int = typer.Option(
+        3, "--max-images", help="Limit to N images per identity"
+    ),
 ):
-    """Run hyperparameter search for WildFusion pipeline."""
+    """Run hyperparameter search for WildFusion pipeline with fixed dataset limits."""
     priorities_list = [x.strip() for x in priorities.split(",")]
+    calibrated_list = [x.strip() for x in calibrated.split(",")]
     calibrations_list = [x.strip() for x in calibrations.split(",")]
     k_list = [int(x.strip()) for x in k_values.split(",")]
     budgets_list = [int(x.strip()) for x in budgets.split(",")]
 
-    # Parse calibrated extractors (semicolon-separated sets, comma-separated items)
-    if ";" in calibrated:
-        calibrated_list = [
-            [y.strip() for y in x.split(",")] for x in calibrated.split(";")
-        ]
-    else:
-        calibrated_list = [[x.strip() for x in calibrated.split(",")]]
+    typer.secho(
+        f"\nWildFusion Hyperparameter Search (Fixed: {max_identities} identities × {max_images} images, calibration=isotonic)",
+        fg=typer.colors.CYAN,
+        bold=True,
+    )
 
     tasks = []
     for priority in priorities_list:
-        for calibrated_set in calibrated_list:
+        for calibrated_extractor in calibrated_list:
             for calibration in calibrations_list:
                 for k in k_list:
                     for budget in budgets_list:
@@ -978,12 +1041,14 @@ def search_fusion(
                             EvaluateWildFusion(
                                 data_root=data_root,
                                 priority_extractor=priority,
-                                calibrated_extractors=calibrated_set,
+                                calibrated_extractors=[calibrated_extractor],
                                 calibration_name=calibration,
                                 k=k,
                                 B=budget,
                                 train_split=train_split,
                                 cal_split=cal_split,
+                                max_identities=max_identities,
+                                max_images_per_identity=max_images,
                             )
                         )
 
@@ -1005,9 +1070,17 @@ def summarize(
     sort_by: str = typer.Option(
         "accuracy", "--sort-by", "-s", help="Sort results by (accuracy/ece)"
     ),
+    fmt: str = typer.Option("table", "--format", "-f", help="Output format: table|csv"),
+    output: Optional[str] = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="Optional path to write the summarized table (CSV if --format=csv)",
+    ),
 ):
-    """Summarize results from JSON files."""
-    processed_path = Path(data_root) / "processed"
+    """Summarize results from JSON files as a pandas table."""
+    # Expand '~' in data_root for correct path resolution
+    processed_path = Path(data_root).expanduser() / "processed"
 
     results = []
 
@@ -1035,39 +1108,79 @@ def summarize(
         typer.secho("No results found!", fg=typer.colors.RED)
         return
 
-    # Sort results
-    reverse = sort_by == "accuracy"  # Higher is better for accuracy
-    results.sort(key=lambda x: x.get(sort_by, 0), reverse=reverse)
+    # Build pandas DataFrame and harmonize columns across pipelines
+    df = pd.DataFrame(results)
+    if df.empty:
+        typer.secho("No results found!", fg=typer.colors.RED)
+        return
 
-    # Display summary
-    typer.secho(f"\n{'=' * 80}", fg=typer.colors.CYAN)
-    typer.secho(
-        f"Results Summary ({len(results)} experiments)", fg=typer.colors.CYAN, bold=True
+    # Harmonize columns
+    df["model"] = df.apply(
+        lambda r: r.get("extractor")
+        if r.get("pipeline") == "knn"
+        else r.get("priority_extractor"),
+        axis=1,
     )
-    typer.secho(f"{'=' * 80}\n", fg=typer.colors.CYAN)
+    df["sim"] = df.apply(
+        lambda r: r.get("similarity") if r.get("pipeline") == "knn" else "-",
+        axis=1,
+    )
+    df["calibrated"] = df.apply(
+        lambda r: ",".join(r.get("calibrated_extractors", []))
+        if r.get("pipeline") == "wildfusion"
+        else "-",
+        axis=1,
+    )
 
-    for i, result in enumerate(results, 1):
-        if result["pipeline"] == "knn":
-            typer.echo(f"{i}. k-NN Pipeline:")
-            typer.echo(f"   Extractor: {result['extractor']}")
-            typer.echo(f"   Similarity: {result['similarity']}")
-            typer.echo(f"   Calibration: {result['calibration']}")
-            typer.echo(f"   k: {result['k']}")
+    # Ensure numeric
+    for col in ["accuracy", "ece", "k", "B"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    # Sorting: accuracy desc, ece asc
+    ascending = False if sort_by == "accuracy" else True
+    if sort_by in df.columns:
+        df = df.sort_values(by=sort_by, ascending=ascending, kind="mergesort")
+
+    # Select columns to display
+    cols = [
+        "pipeline",
+        "model",
+        "sim",
+        "calibrated",
+        "calibration",
+        "k",
+        "B",
+        "accuracy",
+        "ece",
+        "file",
+    ]
+    cols = [c for c in cols if c in df.columns]
+    view = df[cols].copy()
+
+    # Pretty percentages
+    if "accuracy" in view.columns:
+        view["accuracy"] = (view["accuracy"] * 100).map(lambda x: f"{x:.2f}%")
+    if "ece" in view.columns:
+        view["ece"] = (view["ece"] * 100).map(lambda x: f"{x:.2f}%")
+
+    if fmt == "csv":
+        if output is None:
+            typer.echo(view.to_csv(index=False))
         else:
-            typer.echo(f"{i}. WildFusion Pipeline:")
-            typer.echo(f"   Priority: {result['priority_extractor']}")
-            typer.echo(f"   Calibrated: {', '.join(result['calibrated_extractors'])}")
-            typer.echo(f"   Calibration: {result['calibration']}")
-            typer.echo(f"   k: {result['k']}, B: {result['B']}")
-
-        acc_color = (
-            typer.colors.GREEN if result["accuracy"] > 0.8 else typer.colors.YELLOW
+            out_path = Path(output).expanduser()
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            view.to_csv(out_path, index=False)
+            typer.secho(f"Wrote CSV to {out_path}", fg=typer.colors.GREEN)
+    else:
+        typer.secho(f"\n{'=' * 80}", fg=typer.colors.CYAN)
+        typer.secho(
+            f"Results Summary ({len(view)} experiments)",
+            fg=typer.colors.CYAN,
+            bold=True,
         )
-        ece_color = typer.colors.GREEN if result["ece"] < 0.1 else typer.colors.YELLOW
-
-        typer.secho(f"   Accuracy: {result['accuracy']:.4f}", fg=acc_color, bold=True)
-        typer.secho(f"   ECE: {result['ece']:.4f}", fg=ece_color, bold=True)
-        typer.echo(f"   File: {result['file']}\n")
+        typer.secho(f"{'=' * 80}\n", fg=typer.colors.CYAN)
+        typer.echo(view.to_string(index=False))
 
 
 if __name__ == "__main__":
