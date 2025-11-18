@@ -6,11 +6,13 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "lightning>=2.5.5",
+    "luigi>=3.6.0",
     "matplotlib>=3.10.6",
     "pandas>=2.3.2",
     "pyarrow>=21.0.0",
     "pyspark>=4.0.1",
     "torch>=2.9.0",
+    "typer>=0.19.2",
     "umap-learn>=0.5.9.post2",
     "wildlife-datasets>=1.0.7",
     "wildlife-tools",
