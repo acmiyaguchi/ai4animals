@@ -30,7 +30,6 @@ from wildlife_tools.similarity.calibration import (
     LogisticCalibration,
     reliability_diagram,
 )
-from wildlife_tools.similarity.pairwise.collectors import CollectCounts
 
 app = typer.Typer(help="Wildlife Re-identification Pipeline")
 
@@ -68,14 +67,13 @@ class LightGlueMatcher:
     """
 
     def __init__(self, features_name, threshold=0.5, device="cuda"):
-        collector = CollectCounts(thresholds=[threshold])
         self.matcher = MatchLightGlue(
-            features=features_name, collector=collector, device=device, batch_size=256
+            features=features_name, device=device, batch_size=256
         )
         self.threshold = threshold
 
-    def __call__(self, query_features, db_features):
-        return self.matcher(query_features, db_features)[self.threshold]
+    def __call__(self, query_features, db_features, pairs=None):
+        return self.matcher(query_features, db_features, pairs=pairs)
 
 
 class DownloadData(BaseTask):
@@ -160,6 +158,8 @@ class ExtractFeatures(BaseTask):
     extractor_name = luigi.Parameter(default="megadescriptor-t")
     train_split = luigi.FloatParameter(default=0.6)
     cal_split = luigi.FloatParameter(default=0.2)
+    max_identities = luigi.IntParameter(default=None)
+    max_images_per_identity = luigi.IntParameter(default=None)
 
     def requires(self):
         return {
@@ -200,15 +200,54 @@ class ExtractFeatures(BaseTask):
         with open(self.input()["splits"].path, "rb") as f:
             splits_idx = pickle.load(f)
 
+        # Apply dataset filtering if specified
+        df_train = metadata.df.iloc[splits_idx["idx_train"]]
+        df_cal = metadata.df.iloc[splits_idx["idx_cal"]]
+        df_test = metadata.df.iloc[splits_idx["idx_test"]]
+
+        if self.max_identities is not None:
+            # Get the most common identities from training set
+            top_identities = (
+                df_train[metadata.col_label]
+                .value_counts()
+                .head(self.max_identities)
+                .index.tolist()
+            )
+            print(
+                f"Limiting to {self.max_identities} most common identities: {len(top_identities)} found"
+            )
+
+            # Filter all datasets to only include these identities
+            df_train = df_train[df_train[metadata.col_label].isin(top_identities)]
+            df_cal = df_cal[df_cal[metadata.col_label].isin(top_identities)]
+            df_test = df_test[df_test[metadata.col_label].isin(top_identities)]
+
+            print(
+                f"After identity filter - Train: {len(df_train)}, Cal: {len(df_cal)}, Test: {len(df_test)}"
+            )
+
+        if self.max_images_per_identity is not None:
+            print(f"Limiting to {self.max_images_per_identity} images per identity")
+            df_train = df_train.groupby(metadata.col_label).head(
+                self.max_images_per_identity
+            )
+            df_cal = df_cal.groupby(metadata.col_label).head(
+                self.max_images_per_identity
+            )
+            df_test = df_test.groupby(metadata.col_label).head(
+                self.max_images_per_identity
+            )
+
+            print(
+                f"After image limit - Train: {len(df_train)}, Cal: {len(df_cal)}, Test: {len(df_test)}"
+            )
+
         extractor, transform = self.get_extractor_and_transform()
 
         datasets_out = {}
         features_out = {}
-        for split in ["train", "cal", "test"]:
-            idx = splits_idx[f"idx_{split}"]
-            dataset = ImageDataset(
-                metadata.df.iloc[idx], metadata.root, transform=transform
-            )
+        for split, df in [("train", df_train), ("cal", df_cal), ("test", df_test)]:
+            dataset = ImageDataset(df, metadata.root, transform=transform)
             datasets_out[f"labels_{split}"] = dataset.labels_string
             features_out[f"features_{split}"] = extractor(dataset)
 
@@ -216,7 +255,12 @@ class ExtractFeatures(BaseTask):
             pickle.dump({**datasets_out, **features_out}, f)
 
     def output(self):
-        return self.output_path("features", f"{self.extractor_name}.pkl")
+        suffix = ""
+        if self.max_identities is not None:
+            suffix += f"_maxid{self.max_identities}"
+        if self.max_images_per_identity is not None:
+            suffix += f"_maximg{self.max_images_per_identity}"
+        return self.output_path("features", f"{self.extractor_name}{suffix}.pkl")
 
 
 class CalculateSimilarity(BaseTask):
@@ -226,6 +270,8 @@ class CalculateSimilarity(BaseTask):
     extractor_name = luigi.Parameter(default="megadescriptor-t")
     train_split = luigi.FloatParameter(default=0.6)
     cal_split = luigi.FloatParameter(default=0.2)
+    max_identities = luigi.IntParameter(default=None)
+    max_images_per_identity = luigi.IntParameter(default=None)
 
     def requires(self):
         return ExtractFeatures(
@@ -233,6 +279,8 @@ class CalculateSimilarity(BaseTask):
             extractor_name=self.extractor_name,
             train_split=self.train_split,
             cal_split=self.cal_split,
+            max_identities=self.max_identities,
+            max_images_per_identity=self.max_images_per_identity,
         )
 
     def run(self):
@@ -254,8 +302,14 @@ class CalculateSimilarity(BaseTask):
             pickle.dump({"cal_sim": cal_sim, "eval_sim": eval_sim}, f)
 
     def output(self):
+        suffix = ""
+        if self.max_identities is not None:
+            suffix += f"_maxid{self.max_identities}"
+        if self.max_images_per_identity is not None:
+            suffix += f"_maximg{self.max_images_per_identity}"
         return self.output_path(
-            "similarity", f"ext-{self.extractor_name}_sim-{self.similarity_name}.pkl"
+            "similarity",
+            f"ext-{self.extractor_name}_sim-{self.similarity_name}{suffix}.pkl",
         )
 
 
@@ -268,6 +322,8 @@ class EvaluateModel(BaseTask):
     extractor_name = luigi.Parameter(default="megadescriptor-t")
     train_split = luigi.FloatParameter(default=0.6)
     cal_split = luigi.FloatParameter(default=0.2)
+    max_identities = luigi.IntParameter(default=None)
+    max_images_per_identity = luigi.IntParameter(default=None)
 
     def _validate_combination(self):
         """Validate that extractor and similarity are compatible."""
@@ -308,6 +364,8 @@ class EvaluateModel(BaseTask):
                 extractor_name=self.extractor_name,
                 train_split=self.train_split,
                 cal_split=self.cal_split,
+                max_identities=self.max_identities,
+                max_images_per_identity=self.max_images_per_identity,
             ),
             "similarity": CalculateSimilarity(
                 data_root=self.data_root,
@@ -315,6 +373,8 @@ class EvaluateModel(BaseTask):
                 similarity_name=self.similarity_name,
                 train_split=self.train_split,
                 cal_split=self.cal_split,
+                max_identities=self.max_identities,
+                max_images_per_identity=self.max_images_per_identity,
             ),
         }
 
@@ -368,7 +428,12 @@ class EvaluateModel(BaseTask):
             json.dump(results, f, indent=2)
 
     def output(self):
-        filename = f"ext-{self.extractor_name}_sim-{self.similarity_name}_cal-{self.calibration_name}_k-{self.k}.json"
+        suffix = ""
+        if self.max_identities is not None:
+            suffix += f"_maxid{self.max_identities}"
+        if self.max_images_per_identity is not None:
+            suffix += f"_maximg{self.max_images_per_identity}"
+        filename = f"ext-{self.extractor_name}_sim-{self.similarity_name}_cal-{self.calibration_name}_k-{self.k}{suffix}.json"
         return self.output_path("results_knn", filename)
 
 
@@ -378,10 +443,12 @@ class EvaluateWildFusion(BaseTask):
     k = luigi.IntParameter(default=1)
     B = luigi.IntParameter(default=100)
     priority_extractor = luigi.Parameter(default="megadescriptor-t")
-    calibrated_extractors = luigi.ListParameter(default=["superpoint-lightglue"])
+    calibrated_extractors = luigi.ListParameter(default=["sift-lightglue"])
     calibration_name = luigi.Parameter(default="isotonic")
     train_split = luigi.FloatParameter(default=0.6)
     cal_split = luigi.FloatParameter(default=0.2)
+    max_identities = luigi.IntParameter(default=None)
+    max_images_per_identity = luigi.IntParameter(default=None)
 
     def requires(self):
         return {
@@ -416,6 +483,10 @@ class EvaluateWildFusion(BaseTask):
             extractor = SuperPointExtractor(device=device, num_workers=32)
             transform = T.Compose([T.Resize([224, 224]), T.ToTensor()])
             matcher = LightGlueMatcher(features_name="superpoint", device=device)
+        elif extractor_name == "sift-lightglue":
+            extractor = SiftExtractor()
+            transform = T.Compose([T.Resize([224, 224]), T.ToTensor()])
+            matcher = LightGlueMatcher(features_name="sift", device=device)
         else:
             raise ValueError(f"Unknown extractor_name: {extractor_name}")
 
@@ -451,15 +522,52 @@ class EvaluateWildFusion(BaseTask):
             )
 
         # 2. Create datasets (WildFusion takes datasets, not pre-computed features)
-        dataset_train = ImageDataset(
-            metadata.df.iloc[splits_idx["idx_train"]], metadata.root
-        )
-        dataset_cal = ImageDataset(
-            metadata.df.iloc[splits_idx["idx_cal"]], metadata.root
-        )
-        dataset_test = ImageDataset(
-            metadata.df.iloc[splits_idx["idx_test"]], metadata.root
-        )
+        df_train = metadata.df.iloc[splits_idx["idx_train"]]
+        df_cal = metadata.df.iloc[splits_idx["idx_cal"]]
+        df_test = metadata.df.iloc[splits_idx["idx_test"]]
+
+        # Optionally limit to a subset of identities for faster training
+        if self.max_identities is not None:
+            # Get the most common identities from training set
+            top_identities = (
+                df_train[metadata.col_label]
+                .value_counts()
+                .head(self.max_identities)
+                .index.tolist()
+            )
+            print(
+                f"Limiting to {self.max_identities} most common identities: {len(top_identities)} found"
+            )
+
+            # Filter all datasets to only include these identities
+            df_train = df_train[df_train[metadata.col_label].isin(top_identities)]
+            df_cal = df_cal[df_cal[metadata.col_label].isin(top_identities)]
+            df_test = df_test[df_test[metadata.col_label].isin(top_identities)]
+
+            print(
+                f"After identity filter - Train: {len(df_train)}, Cal: {len(df_cal)}, Test: {len(df_test)}"
+            )
+
+        # Optionally limit images per identity to reduce dataset size
+        if self.max_images_per_identity is not None:
+            print(f"Limiting to {self.max_images_per_identity} images per identity")
+            df_train = df_train.groupby(metadata.col_label).head(
+                self.max_images_per_identity
+            )
+            df_cal = df_cal.groupby(metadata.col_label).head(
+                self.max_images_per_identity
+            )
+            df_test = df_test.groupby(metadata.col_label).head(
+                self.max_images_per_identity
+            )
+
+            print(
+                f"After image limit - Train: {len(df_train)}, Cal: {len(df_cal)}, Test: {len(df_test)}"
+            )
+
+        dataset_train = ImageDataset(df_train, metadata.root)
+        dataset_cal = ImageDataset(df_cal, metadata.root)
+        dataset_test = ImageDataset(df_test, metadata.root)
 
         # 3. Instantiate WildFusion
         wildfusion = WildFusion(
@@ -491,7 +599,10 @@ class EvaluateWildFusion(BaseTask):
         hits = (
             dataset_test.labels_string[:, None] == dataset_train.labels_string[None, :]
         )
-        ece = reliability_diagram(similarity.flatten(), hits.flatten(), skip_plot=True)
+        # Convert to float32 to avoid pandas float16 issue
+        ece = reliability_diagram(
+            similarity.astype(np.float32).flatten(), hits.flatten(), skip_plot=True
+        )
 
         # Prepare results as JSON
         results = {
@@ -619,8 +730,45 @@ def knn(
     k: int = typer.Option(1, "--k", help="Number of nearest neighbors"),
     train_split: float = typer.Option(0.6, "--train", help="Train split ratio"),
     cal_split: float = typer.Option(0.2, "--cal", help="Calibration split ratio"),
+    max_identities: int = typer.Option(
+        None,
+        "--max-identities",
+        help="Limit to N most common identities (for faster training)",
+    ),
+    max_images: int = typer.Option(
+        None,
+        "--max-images",
+        help="Limit to N images per identity (reduces dataset size)",
+    ),
 ):
     """Run basic k-NN classification pipeline."""
+
+    # Display configuration
+    typer.echo("=" * 80)
+    typer.echo("k-NN Pipeline Configuration")
+    typer.echo("=" * 80)
+    typer.echo()
+    typer.echo(f"Data Root:            {data_root}")
+    typer.echo(f"Extractor:            {extractor}")
+    typer.echo(f"Similarity:           {similarity}")
+    typer.echo(f"Calibration Method:   {calibration}")
+    typer.echo(f"k-NN:                 {k}")
+    typer.echo(f"Train Split:          {train_split}")
+    typer.echo(f"Calibration Split:    {cal_split}")
+
+    if max_identities is not None or max_images is not None:
+        typer.secho("\nDataset Limits (FAST MODE):", fg=typer.colors.YELLOW)
+        if max_identities is not None:
+            typer.secho(
+                f"  Max Identities:     {max_identities}", fg=typer.colors.YELLOW
+            )
+        if max_images is not None:
+            typer.secho(f"  Max Images/Identity: {max_images}", fg=typer.colors.YELLOW)
+
+    typer.echo()
+    typer.echo("=" * 80)
+    typer.echo()
+
     luigi.build(
         [
             EvaluateModel(
@@ -631,6 +779,8 @@ def knn(
                 k=k,
                 train_split=train_split,
                 cal_split=cal_split,
+                max_identities=max_identities,
+                max_images_per_identity=max_images,
             )
         ],
         local_scheduler=True,
@@ -649,7 +799,7 @@ def fusion(
         "megadescriptor-t", "--priority", "-p", help="Priority extractor name"
     ),
     calibrated: str = typer.Option(
-        "superpoint-lightglue",
+        "sift-lightglue",
         "--calibrated",
         help="Comma-separated calibrated extractors",
     ),
@@ -663,6 +813,16 @@ def fusion(
     budget: int = typer.Option(100, "--budget", "-b", help="Shortlisting budget B"),
     train_split: float = typer.Option(0.6, "--train", help="Train split ratio"),
     cal_split: float = typer.Option(0.2, "--cal", help="Calibration split ratio"),
+    max_identities: int = typer.Option(
+        None,
+        "--max-identities",
+        help="Limit to N most common identities (for faster training)",
+    ),
+    max_images_per_identity: int = typer.Option(
+        None,
+        "--max-images",
+        help="Limit to N images per identity (reduces dataset size)",
+    ),
 ):
     """Run WildFusion multi-pipeline system."""
     calibrated_extractors = [x.strip() for x in calibrated.split(",")]
@@ -680,6 +840,12 @@ def fusion(
     typer.echo(f"Train Split:          {train_split}")
     typer.echo(f"Calibration Split:    {cal_split}")
     typer.echo(f"Test Split:           {1.0 - train_split - cal_split}")
+    if max_identities or max_images_per_identity:
+        typer.secho("\nDataset Limits (FAST MODE):", fg=typer.colors.YELLOW, bold=True)
+        if max_identities:
+            typer.echo(f"  Max Identities:     {max_identities}")
+        if max_images_per_identity:
+            typer.echo(f"  Max Images/Identity: {max_images_per_identity}")
     typer.secho("\n" + "=" * 80 + "\n", fg=typer.colors.CYAN)
 
     luigi.build(
@@ -693,6 +859,8 @@ def fusion(
                 B=budget,
                 train_split=train_split,
                 cal_split=cal_split,
+                max_identities=max_identities,
+                max_images_per_identity=max_images_per_identity,
             )
         ],
         local_scheduler=True,
@@ -767,7 +935,7 @@ def search_fusion(
         help="Comma-separated priority extractors",
     ),
     calibrated: str = typer.Option(
-        "superpoint-lightglue",
+        "sift-lightglue",
         "--calibrated",
         help="Calibrated extractors (use ; to separate sets)",
     ),
